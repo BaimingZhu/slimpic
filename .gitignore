@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# build output
+out/
+release/
+
+# downloaded at install time by scripts/fetch-slimdeer.mjs
+vendor/slimdeer/
+
+# logs & misc
+*.log
+.DS_Store
+Thumbs.db

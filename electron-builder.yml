@@ -1,0 +1,36 @@
+appId: com.happyelements.slimtool
+productName: SlimTool
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: vendor/slimdeer
+    to: slimdeer
+  - from: build/icon.ico
+    to: icon.ico
+asar: true
+win:
+  target:
+    - portable
+  icon: build/icon.ico
+  artifactName: SlimTool-${version}-portable.exe
+portable:
+  artifactName: SlimTool-${version}-portable.exe
+  requestExecutionLevel: user
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  artifactName: SlimTool-${version}-${arch}.dmg
+  # No Apple Developer certificate: ship unsigned; users open via right-click > Open.
+  identity: null
+dmg:
+  artifactName: SlimTool-${version}-${arch}.dmg
+npmRebuild: false
