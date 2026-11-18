@@ -9,9 +9,11 @@
 ![扫描确认](docs/screenshot-review.png)
 ![压缩完成](docs/screenshot-done.png)
 
-## 使用
+## 下载使用
 
-双击 `release/SlimPic-1.0.0-portable.exe`（便携版，无需安装，可拷贝分发）：
+到 [Releases](https://github.com/BaimingZhu/slimpic/releases/latest) 下载 `SlimPic-1.0.0-portable.exe`（便携版，无需安装，双击即用，可拷贝分发）。
+
+使用步骤：
 
 1. **选择文件夹**（或直接把文件夹拖进窗口）。
 2. 扫描后先看汇总：**待压缩 / 已压缩跳过 / 不支持 / 过大跳过**，下方是待压缩清单。
