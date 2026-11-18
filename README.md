@@ -1,4 +1,6 @@
-# SlimTool · 图片批量压缩工具
+# 纤图 SlimPic · 图片批量压缩工具
+
+> 给图片瘦身，给项目减负。批量瘦身，画质无损。
 
 选择项目里的图片文件夹 → 递归扫描 → 先提示有多少张需要压缩（压缩过的自动跳过）→ 一键压缩，**原地覆盖**，文件名不变，前端引用无需改动。
 
@@ -9,7 +11,7 @@
 
 ## 使用
 
-双击 `release/SlimTool-1.0.0-portable.exe`（便携版，无需安装，可拷贝分发）：
+双击 `release/SlimPic-1.0.0-portable.exe`（便携版，无需安装，可拷贝分发）：
 
 1. **选择文件夹**（或直接把文件夹拖进窗口）。
 2. 扫描后先看汇总：**待压缩 / 已压缩跳过 / 不支持 / 过大跳过**，下方是待压缩清单。
@@ -21,7 +23,7 @@
 - **支持输入**：PNG（含 APNG 动图，保持动画）、JPEG。gif/svg/ico/webp/avif 等会列出并标记“不支持”。
 - **输出格式**：保持原格式（PNG→PNG、JPEG→JPEG）/ 转 WebP / 转 AVIF。转换会生成同名 `.webp`/`.avif` 并删除原图，项目引用需改后缀；目标同名文件已存在时报错跳过，绝不静默覆盖。AVIF 编码明显更慢。
 - **只小不换**：压缩结果比原文件大时保留原图，标记“已最优”，同样计入跳过记录。
-- **跳过记录**：按“绝对路径 + 文件大小/mtime/内容哈希”记在本机 `%APPDATA%/slimtool/compressed.json`。文件内容变了会自动重新进入待压缩列表。界面上可「强制重新压缩」或「清除跳过记录」。
+- **跳过记录**：按“绝对路径 + 文件大小/mtime/内容哈希”记在本机 `%APPDATA%/slimpic/compressed.json`。文件内容变了会自动重新进入待压缩列表。界面上可「强制重新压缩」或「清除跳过记录」。
 - **安全写回**：先写同目录临时文件再原子替换，中途失败/取消不会损坏原图。
 - **并发**：最多 4 个后台进程并行压缩，界面不卡；可随时取消（当前文件处理完即停）。
 - **默认忽略目录**：`node_modules`、`.git`、`.svn`、`.hg` 与隐藏目录，可勾选包含。
@@ -46,13 +48,13 @@ node scripts/make-icon.mjs <图片路径>   # 从一张图重新生成应用图�
 代码本身跨平台（Electron + WebAssembly，无原生依赖），但 **electron-builder 的 mac 目标（.app/.dmg）只能在 macOS 上执行**，Windows 上无法直接产出。在一台 Mac 上：
 
 ```bash
-git clone <本项目> && cd selftool
+git clone https://github.com/BaimingZhu/slimpic.git && cd slimpic
 npm install          # 自动下载 slimdeer wasm
-npm run dist:mac     # 产出 release/SlimTool-1.0.0-arm64.dmg 和 -x64.dmg
+npm run dist:mac     # 产出 release/SlimPic-1.0.0-arm64.dmg 和 -x64.dmg
 ```
 
 - 同时产出 Apple Silicon（arm64）与 Intel（x64）两个 dmg。
-- 未配置 Apple 开发者签名（`identity: null`），分发后首次打开需 **右键 → 打开**，或在「系统设置 → 隐私与安全性」中允许；若提示已损坏，执行 `xattr -cr /Applications/SlimTool.app`。
+- 未配置 Apple 开发者签名（`identity: null`），分发后首次打开需 **右键 → 打开**，或在「系统设置 → 隐私与安全性」中允许；若提示已损坏，执行 `xattr -cr /Applications/SlimPic.app`。
 - 图标使用 `build/icon.icns`（`make-icon.mjs` 会从同一张图同时生成 .ico 与 .icns）。
 - 没有 Mac 时可用 GitHub Actions 的 `macos-latest` runner 执行 `npm run dist:mac`。
 

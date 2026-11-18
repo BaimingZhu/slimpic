@@ -14,7 +14,7 @@ const electronPath = require('electron')
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = 9333
 
-const work = await mkdtemp(path.join(tmpdir(), 'slimtool-e2e-'))
+const work = await mkdtemp(path.join(tmpdir(), 'slimpic-e2e-'))
 const fixtures = path.join(work, 'images')
 const userData = path.join(work, 'userdata')
 await makeFixtures(fixtures)

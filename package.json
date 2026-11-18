@@ -1,5 +1,5 @@
 {
-  "name": "slimtool",
+  "name": "slimpic",
   "version": "1.0.0",
   "description": "批量图片压缩工具（slimdeer 引擎，原地覆盖，递归扫描）",
   "main": "out/main/index.js",

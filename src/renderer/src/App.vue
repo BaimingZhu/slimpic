@@ -170,9 +170,9 @@ onBeforeUnmount(() => offProgress?.())
 <template>
   <div class="shell" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="onDrop">
     <header class="top card">
-      <img class="logo" src="./assets/logo.png" alt="SlimTool" />
+      <img class="logo" src="./assets/logo.png" alt="纤图 SlimPic" />
       <div class="title">
-        <h1>SlimTool</h1>
+        <h1>纤图 SlimPic</h1>
         <span class="sub">图片批量压缩 · slimdeer 引擎 · 本地处理，不上传</span>
       </div>
       <div class="dir num" :title="dir">{{ dir || '未选择文件夹' }}</div>

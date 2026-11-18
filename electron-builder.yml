@@ -1,5 +1,5 @@
-appId: com.happyelements.slimtool
-productName: SlimTool
+appId: com.baimingzhu.slimpic
+productName: SlimPic
 directories:
   output: release
   buildResources: build
@@ -16,9 +16,9 @@ win:
   target:
     - portable
   icon: build/icon.ico
-  artifactName: SlimTool-${version}-portable.exe
+  artifactName: SlimPic-${version}-portable.exe
 portable:
-  artifactName: SlimTool-${version}-portable.exe
+  artifactName: SlimPic-${version}-portable.exe
   requestExecutionLevel: user
 mac:
   target:
@@ -28,9 +28,9 @@ mac:
         - x64
   icon: build/icon.icns
   category: public.app-category.developer-tools
-  artifactName: SlimTool-${version}-${arch}.dmg
+  artifactName: SlimPic-${version}-${arch}.dmg
   # No Apple Developer certificate: ship unsigned; users open via right-click > Open.
   identity: null
 dmg:
-  artifactName: SlimTool-${version}-${arch}.dmg
+  artifactName: SlimPic-${version}-${arch}.dmg
 npmRebuild: false

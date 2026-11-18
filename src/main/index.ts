@@ -44,7 +44,7 @@ function createWindow(): void {
     height: 760,
     minWidth: 860,
     minHeight: 600,
-    title: 'SlimTool · 图片批量压缩',
+    title: '纤图 SlimPic · 图片批量压缩',
     icon: iconPath(),
     autoHideMenuBar: true,
     backgroundColor: '#f6f7f9',
