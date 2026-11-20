@@ -23,7 +23,7 @@ export function normPath(p: string): string {
 
 export class Store {
   private history = new Map<string, HistoryEntry>()
-  private settings: Settings = { lastDir: '', format: 'original', includeIgnored: false }
+  private settings: Settings = { lastDir: '', lastImageDir: '', format: 'original', includeIgnored: false }
   private saveTimer: NodeJS.Timeout | null = null
 
   constructor(private dir: string) {}

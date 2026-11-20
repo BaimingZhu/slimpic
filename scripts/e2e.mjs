@@ -1,7 +1,8 @@
 // End-to-end test: drives the real Electron UI through Playwright (CDP),
-// exercising pick -> scan -> compress -> rescan(skip) -> force -> webp conflict -> cancel.
+// exercising image mode (pick -> export copies -> suffix) and folder mode
+// (pick -> scan -> compress -> rescan(skip) -> force -> webp conflict -> cancel).
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, stat, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, readFile, mkdir, copyFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,13 +20,30 @@ const fixtures = path.join(work, 'images')
 const userData = path.join(work, 'userdata')
 await makeFixtures(fixtures)
 
+// A separate batch of loose images for image mode, so its output folder never
+// pollutes the folder-mode fixture tree.
+const pics = path.join(work, 'pics')
+const outDir = path.join(work, 'out')
+await mkdir(pics, { recursive: true })
+const picNames = ['a.png', 'photo.jpg', 'tiny.png', 'anim.gif']
+for (const n of picNames) await copyFile(path.join(fixtures, n), path.join(pics, n))
+const picPaths = picNames.map((n) => path.join(pics, n))
+const picSizes = {}
+for (const n of picNames) picSizes[n] = (await stat(path.join(pics, n))).size
+
 const exe = process.env.SLIM_EXE ?? electronPath
 const args = process.env.SLIM_EXE
   ? [`--remote-debugging-port=${PORT}`]
   : [ROOT, `--remote-debugging-port=${PORT}`]
 
 const child = spawn(exe, args, {
-  env: { ...process.env, SLIM_USER_DATA: userData, SLIM_E2E_DIR: fixtures },
+  env: {
+    ...process.env,
+    SLIM_USER_DATA: userData,
+    SLIM_E2E_DIR: fixtures,
+    SLIM_E2E_IMAGES: JSON.stringify(picPaths),
+    SLIM_E2E_OUT_DIR: outDir
+  },
   stdio: ['ignore', 'pipe', 'pipe']
 })
 let childLog = ''
@@ -91,8 +109,65 @@ try {
   await connect()
   const page = await waitForPage()
 
-  // --- 1. scan ---
+  // --- 0. image mode is the default: pick loose images, export compressed copies ---
+  check('image mode is default', /拖入图片/.test(await page.locator('[data-test=dropzone]').textContent()))
+  const modeTabs = (await page.locator('[data-test=modes] button').allTextContents()).map((t) => t.trim())
+  check('mode tabs order', modeTabs.join(',') === '图片模式,文件夹模式', modeTabs.join(','))
+  await page.click('[data-test=pick-big]')
+  await page.waitForSelector('[data-test=file-pending]')
+  check('image pending = 3', (await text(page, 'file-pending')) === '3', await text(page, 'file-pending'))
+  check('image unsupported = 1', (await text(page, 'file-unsupported')) === '1', await text(page, 'file-unsupported'))
+  check('image total = 4', (await text(page, 'file-total')) === '4', await text(page, 'file-total'))
+  const defaultOut = await text(page, 'out-dir')
+  check('image default out dir', defaultOut === path.join(pics, 'slimpic-out'), defaultOut)
+
+  await page.click('[data-test=pick-outdir]')
+  await page.waitForFunction(
+    (p) => document.querySelector('[data-test=out-dir]')?.textContent?.trim() === p,
+    outDir
+  )
+  check('image out dir changed', (await text(page, 'out-dir')) === outDir, await text(page, 'out-dir'))
+
+  await page.click('[data-test=start-files]')
+  await page.waitForSelector('[data-test=pick-more]', { timeout: 300000 })
+  const picRows = await rowMap(page)
+  check('image a.png compressed', /完成 −\d+%/.test(picRows['a.png'] ?? ''), picRows['a.png'])
+  check('image photo.jpg compressed', /完成 −\d+%/.test(picRows['photo.jpg'] ?? ''), picRows['photo.jpg'])
+  check('image tiny.png optimal', /已最优/.test(picRows['tiny.png'] ?? ''), picRows['tiny.png'])
+  check('image anim.gif unsupported', /不支持/.test(picRows['anim.gif'] ?? ''), picRows['anim.gif'])
+  check('image saved shown', /[KMB]/.test(await text(page, 'stat-saved-files')), await text(page, 'stat-saved-files'))
+
+  const firstOut = await readdir(outDir)
+  check('image outputs = 3', firstOut.length === 3, firstOut.join(','))
+  const outA = (await stat(path.join(outDir, 'a.png'))).size
+  const outTiny = (await stat(path.join(outDir, 'tiny.png'))).size
+  check('image copy smaller than source', outA < picSizes['a.png'], `${outA} < ${picSizes['a.png']}`)
+  check('image tiny copied as-is', outTiny === picSizes['tiny.png'], `${outTiny} / ${picSizes['tiny.png']}`)
+  const srcA = (await stat(path.join(pics, 'a.png'))).size
+  check('image source untouched', srcA === picSizes['a.png'], String(srcA))
+
+  // Re-exporting the same batch must not overwrite the previous outputs.
+  await page.click('[data-test=pick-more]')
+  await page.waitForSelector('[data-test=file-pending]')
+  await page.click('[data-test=start-files]')
+  await page.waitForSelector('[data-test=pick-more]', { timeout: 300000 })
+  const secondOut = await readdir(outDir)
+  check('image suffix instead of overwrite', secondOut.includes('a-2.png') && secondOut.includes('tiny-2.png'), secondOut.join(','))
+
+  // Format conversion in image mode writes the requested format, source kept.
+  await page.click('[data-test=pick-more]')
+  await page.waitForSelector('[data-test=fmt-webp]')
+  await page.click('[data-test=fmt-webp]')
+  await page.click('[data-test=start-files]')
+  await page.waitForSelector('[data-test=pick-more]', { timeout: 300000 })
+  const thirdOut = await readdir(outDir)
+  check('image webp export', thirdOut.includes('a.webp') && thirdOut.includes('photo.webp'), thirdOut.join(','))
+  check('image webp source kept', (await stat(path.join(pics, 'a.png'))).size === picSizes['a.png'])
+
+  // --- 1. folder mode: scan ---
+  await page.click('[data-test=mode-folder]')
   await scanViaPicker(page)
+  await page.click('[data-test=fmt-original]')
   check('scan pending = 6', (await text(page, 'stat-pending')) === '6', await text(page, 'stat-pending'))
   check('scan skipped = 0', (await text(page, 'stat-skipped')) === '0')
   check('scan unsupported = 5', (await text(page, 'stat-unsupported')) === '5', await text(page, 'stat-unsupported'))

@@ -62,14 +62,33 @@ export interface RunSummaryEvent {
 
 export interface Settings {
   lastDir: string
+  lastImageDir: string
   format: OutputFormat
   includeIgnored: boolean
 }
 
+// A batch of individually picked or dropped image files (image mode).
+export interface FileInspectResult {
+  // Directory the files came from, and where compressed copies go by default.
+  baseDir: string
+  outDir: string
+  items: ScanItem[]
+}
+
+// Dropped paths may be a folder (folder mode) or image files (image mode).
+export type OpenPathsResult =
+  | { type: 'folder'; dir: string }
+  | { type: 'files'; result: FileInspectResult }
+
 export interface SlimAPI {
   selectFolder(): Promise<string | null>
+  selectImages(): Promise<string[] | null>
+  selectOutputDir(current: string): Promise<string | null>
+  openPaths(paths: string[]): Promise<OpenPathsResult>
   scan(dir: string, opts: ScanOptions): Promise<ScanResult>
   startCompress(paths: string[], format: OutputFormat): Promise<RunSummaryEvent>
+  compressFiles(paths: string[], format: OutputFormat, outDir: string): Promise<RunSummaryEvent>
+  thumbs(paths: string[]): Promise<Record<string, string>>
   cancel(): Promise<void>
   clearHistory(dir: string): Promise<number>
   openPath(p: string): Promise<void>
@@ -80,8 +99,13 @@ export interface SlimAPI {
 
 export const IPC = {
   selectFolder: 'slim:select-folder',
+  selectImages: 'slim:select-images',
+  selectOutputDir: 'slim:select-output-dir',
+  openPaths: 'slim:open-paths',
   scan: 'slim:scan',
   start: 'slim:start',
+  compressFiles: 'slim:compress-files',
+  thumbs: 'slim:thumbs',
   cancel: 'slim:cancel',
   clearHistory: 'slim:clear-history',
   openPath: 'slim:open-path',

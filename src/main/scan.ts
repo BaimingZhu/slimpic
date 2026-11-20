@@ -1,24 +1,13 @@
-import { readdir, stat, open, readFile } from 'node:fs/promises'
+import { readdir, stat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ScanItem, ScanOptions, ScanResult, ScanSummary } from '../shared/types'
-import { sniff, imageDims, sizeLimitReason } from './image-info'
+import { sizeLimitReason } from './image-info'
+import { inspectImageFile } from './inspect'
 import type { Store } from './store'
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.svn', '.hg'])
 const IMAGE_EXTS = new Set(['.png', '.apng', '.jpg', '.jpeg', '.jpe', '.gif', '.webp', '.avif', '.bmp', '.ico', '.svg', '.tif', '.tiff'])
 const HEAD_BYTES = 64 * 1024
-
-async function readHead(p: string, size: number): Promise<Buffer> {
-  const fh = await open(p, 'r')
-  try {
-    const len = Math.min(size, HEAD_BYTES)
-    const buf = Buffer.alloc(len)
-    await fh.read(buf, 0, len, 0)
-    return buf
-  } finally {
-    await fh.close()
-  }
-}
 
 export async function scanDir(dir: string, opts: ScanOptions, store: Store): Promise<ScanResult> {
   const root = path.resolve(dir)
@@ -50,23 +39,14 @@ export async function scanDir(dir: string, opts: ScanOptions, store: Store): Pro
       } catch {
         continue
       }
-      let head: Buffer
-      try {
-        head = await readHead(full, st.size)
-      } catch {
-        continue
-      }
-      let kind = sniff(head)
-      if (kind === 'unknown' && (ext === '.jpg' || ext === '.jpeg' || ext === '.jpe') && st.size > HEAD_BYTES) {
-        // A camera JPEG's EXIF can push the SOF marker past the head window.
-        try {
-          kind = sniff(await readFile(full))
-        } catch { /* keep unknown */ }
-      }
+      const info = await inspectImageFile(full, st.size, ext)
+      if (!info) continue
+      const kind = info.kind
+
       const rel = path.relative(root, full)
       const base: ScanItem = {
         path: full, rel, kind: kind === 'png' || kind === 'jpeg' ? kind : 'other',
-        ext, size: st.size, width: 0, height: 0, frames: 1, status: 'pending'
+        ext, size: st.size, width: info.width, height: info.height, frames: info.frames, status: 'pending'
       }
 
       if (kind !== 'png' && kind !== 'jpeg') {
@@ -76,15 +56,7 @@ export async function scanDir(dir: string, opts: ScanOptions, store: Store): Pro
         continue
       }
 
-      let dims = imageDims(head, kind)
-      if (kind === 'jpeg' && dims.width === 0 && st.size > HEAD_BYTES) {
-        try {
-          dims = imageDims(await readFile(full), kind)
-        } catch { /* keep zeros; encoder will judge */ }
-      }
-      Object.assign(base, dims)
-
-      const limit = sizeLimitReason(dims, 'original', kind)
+      const limit = sizeLimitReason(info, 'original', kind)
       if (limit) {
         base.status = 'tooLarge'
         base.reason = limit
@@ -92,7 +64,7 @@ export async function scanDir(dir: string, opts: ScanOptions, store: Store): Pro
         continue
       }
 
-      let content: Buffer | undefined = st.size <= HEAD_BYTES ? head : undefined
+      let content: Buffer | undefined = st.size <= HEAD_BYTES ? info.head : undefined
       if (!opts.force && !content && store.entry(full)?.size === st.size) {
         // mtime moved but size matches the record: hash the full content before deciding
         try {
