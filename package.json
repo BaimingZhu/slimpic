@@ -1,6 +1,6 @@
 {
   "name": "slimpic",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "批量图片压缩工具（slimdeer 引擎，原地覆盖，递归扫描）",
   "main": "out/main/index.js",
   "author": "happyelements",
@@ -13,7 +13,7 @@
     "smoke": "node scripts/smoke-slimdeer.mjs",
     "e2e": "npm run build && node scripts/e2e.mjs",
     "dist": "npm run build && electron-builder --win portable",
-    "dist:mac": "npm run build && node scripts/make-icon.mjs --icns-only && electron-builder --mac dmg"
+    "dist:mac": "npm run build && node scripts/make-icon.mjs --icns-only && electron-builder --mac dmg --arm64 --x64"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
