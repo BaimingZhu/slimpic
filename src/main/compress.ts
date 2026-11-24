@@ -1,5 +1,5 @@
 import { utilityProcess, UtilityProcess } from 'electron'
-import { readFile, writeFile, rename, stat, unlink, access, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, rename, stat, unlink, access } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
@@ -39,14 +39,10 @@ export class CompressRunner {
   private startedAt = 0
   private finish: ((s: RunSummaryEvent) => void) | null = null
   private active = 0
-  // Output paths claimed by this run when exporting copies (image mode).
-  private reserved = new Set<string>()
 
   constructor(
     private deps: RunDeps,
-    private format: OutputFormat,
-    // When set, results are written as copies into this folder and sources are left untouched.
-    private destDir: string | null = null
+    private format: OutputFormat
   ) {}
 
   isRunning(): boolean {
@@ -62,14 +58,6 @@ export class CompressRunner {
     this.running = true
     this.startedAt = Date.now()
     this.queue = [...paths]
-    if (this.destDir) {
-      try {
-        await mkdir(this.destDir, { recursive: true })
-      } catch (e) {
-        this.running = false
-        throw new Error(`无法创建输出文件夹：${msg(e)}`)
-      }
-    }
     const n = Math.max(1, Math.min(4, os.cpus().length - 1, paths.length))
     for (let i = 0; i < n; i++) this.slots.push(this.spawn())
     try {
@@ -210,36 +198,6 @@ export class CompressRunner {
     const before = input.length
     const after = result.file.length
 
-    if (this.destDir) {
-      // Export mode: keep the source and write a copy. Same-format output keeps
-      // the source bytes when compression did not help; a requested conversion
-      // is always written in the target format, even if it grows a little.
-      const optimal = outFormat === kind && after >= before
-      const payload = optimal ? input : result.file
-      const outExt = outFormat === kind ? path.extname(filePath) : `.${outFormat}`
-      let outPath: string
-      try {
-        outPath = await this.allocOutPath(path.basename(filePath, path.extname(filePath)), outExt)
-      } catch (e) {
-        return { error: msg(e) }
-      }
-      try {
-        // Same temp-then-rename dance as in-place writes: a crash never leaves a
-        // truncated file under the final output name.
-        const tmp = outPath + '.slimtmp-' + randomBytes(4).toString('hex')
-        await writeFile(tmp, payload)
-        try {
-          await rename(tmp, outPath)
-        } catch (e) {
-          await unlink(tmp).catch(() => {})
-          throw e
-        }
-      } catch (e) {
-        return { error: `写入输出文件失败：${msg(e)}` }
-      }
-      return { ok: true, before, after: payload.length, outPath, ms: result.ms, optimal }
-    }
-
     const converting = outFormat !== kind
     const outPath = converting
       ? path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath)) + '.' + outFormat)
@@ -283,23 +241,6 @@ export class CompressRunner {
     } catch (e) {
       return { error: `写入失败：${msg(e)}` }
     }
-  }
-
-  // Never overwrite: an existing file (or one already claimed in this run) gets a -2, -3… suffix.
-  private async allocOutPath(baseName: string, ext: string): Promise<string> {
-    const dir = this.destDir!
-    for (let i = 1; i <= 999; i++) {
-      const candidate = path.join(dir, i === 1 ? `${baseName}${ext}` : `${baseName}-${i}${ext}`)
-      if (this.reserved.has(candidate)) continue
-      this.reserved.add(candidate)
-      try {
-        await access(candidate)
-      } catch {
-        return candidate // free
-      }
-      this.reserved.delete(candidate)
-    }
-    throw new Error(`输出目录中 ${baseName}${ext} 的同名文件过多，无法生成文件名`)
   }
 
   private settle(

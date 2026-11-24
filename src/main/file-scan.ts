@@ -4,11 +4,9 @@ import type { FileInspectResult, ScanItem } from '../shared/types'
 import { sizeLimitReason } from './image-info'
 import { inspectImageFile } from './inspect'
 
-export const DEFAULT_OUT_DIR_NAME = 'slimpic-out'
-
 // Review list for a batch of individually picked/dropped files (image mode).
 // The skip history is not consulted here: picked files are always compressed,
-// and results are written as copies into a separate output folder.
+// and results overwrite the source files in place.
 export async function inspectFiles(paths: string[]): Promise<FileInspectResult> {
   const items: ScanItem[] = []
   const seen = new Set<string>()
@@ -59,5 +57,5 @@ export async function inspectFiles(paths: string[]): Promise<FileInspectResult> 
 
   if (!items.length) throw new Error('没有可读取的图片文件')
   items.sort((a, b) => a.rel.localeCompare(b.rel, 'zh-CN'))
-  return { baseDir, outDir: path.join(baseDir, DEFAULT_OUT_DIR_NAME), items }
+  return { baseDir, items }
 }

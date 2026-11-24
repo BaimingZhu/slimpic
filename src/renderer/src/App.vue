@@ -20,7 +20,7 @@ interface Task {
   step: Step
   rows: Row[]
   summary: ScanSummary | null
-  outDir: string
+  baseDir: string
   error: string
   runSummary: RunSummaryEvent | null
 }
@@ -35,11 +35,9 @@ const includeIgnored = ref(false)
 const format = ref<OutputFormat>('original')
 const cancelling = ref(false)
 const thumbs = reactive<Record<string, string>>({})
-// Output folder is kept across batches only when the user picked it explicitly.
-const outDirTouched = ref(false)
 let offProgress: (() => void) | null = null
 
-const blankTask = (): Task => ({ step: 'pick', rows: [], summary: null, outDir: '', error: '', runSummary: null })
+const blankTask = (): Task => ({ step: 'pick', rows: [], summary: null, baseDir: '', error: '', runSummary: null })
 const folderTask = reactive<Task>(blankTask())
 const fileTask = reactive<Task>(blankTask())
 
@@ -61,14 +59,11 @@ const savedBytes = computed(() =>
   task.value.rows.reduce((n, r) => n + (r.runState === 'done' ? (r.beforeSize ?? 0) - (r.afterSize ?? 0) : 0), 0)
 )
 const pendingBytes = computed(() => pendingRows.value.reduce((n, r) => n + r.size, 0))
-const outputRows = computed(() => task.value.rows.filter((r) => r.runState === 'done' || r.runState === 'optimal'))
-const outputBytes = computed(() => outputRows.value.reduce((n, r) => n + (r.afterSize ?? 0), 0))
+const finishedRows = computed(() => task.value.rows.filter((r) => r.runState === 'done' || r.runState === 'optimal'))
+const finishedBytes = computed(() => finishedRows.value.reduce((n, r) => n + (r.afterSize ?? 0), 0))
 const unsupportedCount = computed(() => task.value.rows.filter((r) => r.status === 'unsupported').length)
 const tooLargeCount = computed(() => task.value.rows.filter((r) => r.status === 'tooLarge').length)
-const headerPath = computed(() => {
-  if (mode.value === 'folder') return dir.value
-  return fileTask.outDir ? `输出 ${fileTask.outDir}` : ''
-})
+const headerPath = computed(() => (mode.value === 'folder' ? dir.value : fileTask.baseDir))
 const headerEmpty = computed(() => (mode.value === 'folder' ? '未选择文件夹' : '未选择图片'))
 
 function msg(e: unknown): string {
@@ -177,7 +172,7 @@ async function openPaths(paths: string[]): Promise<void> {
     mode.value = 'files'
     for (const k of Object.keys(thumbs)) delete thumbs[k]
     fileTask.rows = res.result.items.map((it) => ({ ...it }))
-    if (!outDirTouched.value) fileTask.outDir = res.result.outDir
+    fileTask.baseDir = res.result.baseDir
     fileTask.runSummary = null
     fileTask.step = 'review'
     void window.slim
@@ -192,21 +187,9 @@ async function openPaths(paths: string[]): Promise<void> {
   }
 }
 
-async function pickOutDir(): Promise<void> {
-  try {
-    const p = await window.slim.selectOutputDir(fileTask.outDir)
-    if (p) {
-      fileTask.outDir = p
-      outDirTouched.value = true
-    }
-  } catch (e) {
-    fileTask.error = msg(e)
-  }
-}
-
 async function startFiles(): Promise<void> {
   const paths = pendingRows.value.map((r) => r.path)
-  if (!paths.length || !fileTask.outDir) return
+  if (!paths.length) return
   for (const r of fileTask.rows) {
     if (r.status === 'pending') {
       r.runState = 'queued'
@@ -217,7 +200,7 @@ async function startFiles(): Promise<void> {
   fileTask.error = ''
   fileTask.step = 'running'
   try {
-    fileTask.runSummary = await window.slim.compressFiles(paths, format.value, fileTask.outDir)
+    fileTask.runSummary = await window.slim.startCompress(paths, format.value)
     fileTask.step = 'done'
   } catch (e) {
     fileTask.error = msg(e)
@@ -234,7 +217,7 @@ function cancel(): void {
 }
 
 function openFolder(): void {
-  const p = mode.value === 'folder' ? dir.value : fileTask.outDir
+  const p = mode.value === 'folder' ? dir.value : fileTask.baseDir
   if (p) void window.slim.openPath(p)
 }
 
@@ -317,7 +300,7 @@ onBeforeUnmount(() => offProgress?.())
       </button>
       <span class="modes-hint">
         {{ mode === 'files'
-          ? '拖入或选择图片，压缩结果导出副本，原图保留不动'
+          ? '拖入或选择图片，原地压缩覆盖原图，文件名不变'
           : '选一个目录，递归原地压缩，已压缩过的自动跳过' }}
       </span>
     </nav>
@@ -334,7 +317,7 @@ onBeforeUnmount(() => offProgress?.())
             : (mode === 'folder' ? '拖入文件夹，或点击选择' : '拖入图片，或点击选择') }}
         </h2>
         <p v-if="mode === 'folder'">递归扫描子目录中的 PNG / JPEG（含 APNG 动图），压缩后原地覆盖，已压缩过的自动跳过。</p>
-        <p v-else>支持 PNG / JPEG（含 APNG 动图），可一次拖入或选择多张；压缩结果导出到输出文件夹，原图保留不动。</p>
+        <p v-else>支持 PNG / JPEG（含 APNG 动图），可一次拖入或选择多张；压缩结果原地覆盖原图，没有变小就保留原样。</p>
         <button class="primary" data-test="pick-big" :disabled="scanning" @click="mode === 'folder' ? pickFolder() : pickImages()">
           {{ scanning ? '处理中…' : mode === 'folder' ? '选择文件夹' : '选择图片' }}
         </button>
@@ -370,9 +353,9 @@ onBeforeUnmount(() => offProgress?.())
     <!-- 汇总卡片：图片模式 -->
     <section v-if="mode === 'files' && task.step !== 'pick'" class="stats">
       <div class="stat card">
-        <b class="num" data-test="file-pending">{{ task.step === 'done' ? outputRows.length : pendingRows.length }}</b>
-        <span>{{ task.step === 'done' ? '已输出' : '待压缩' }}</span>
-        <i class="num">{{ fmtBytes(task.step === 'done' ? outputBytes : pendingBytes) }}</i>
+        <b class="num" data-test="file-pending">{{ task.step === 'done' ? finishedRows.length : pendingRows.length }}</b>
+        <span>{{ task.step === 'done' ? '已压缩' : '待压缩' }}</span>
+        <i class="num">{{ fmtBytes(task.step === 'done' ? finishedBytes : pendingBytes) }}</i>
       </div>
       <div class="stat card">
         <b class="num" data-test="file-unsupported">{{ unsupportedCount }}</b>
@@ -437,16 +420,11 @@ onBeforeUnmount(() => offProgress?.())
       <button class="primary" data-test="start-files" :disabled="!pendingRows.length" @click="startFiles">
         压缩 {{ pendingRows.length }} 张
       </button>
-      <div class="out-row">
-        <label>输出到</label>
-        <span class="outpath num" data-test="out-dir" :title="task.outDir">{{ task.outDir || '未设置' }}</span>
-        <button data-test="pick-outdir" @click="pickOutDir">更改…</button>
-      </div>
     </section>
 
     <p v-if="mode === 'files' && task.step === 'review'" class="note card">
-      原图保留不动，压缩结果写入输出文件夹；同名文件已存在时自动加 -2、-3 后缀，不会覆盖。
-      <template v-if="format !== 'original'">输出为 .{{ format }} 文件。</template>
+      压缩结果原地覆盖原图，文件名不变；压缩后没有变小则保留原图。
+      <template v-if="format !== 'original'">转换为 {{ format.toUpperCase() }} 会生成同名 .{{ format }} 文件并删除原图，项目中的引用路径需要相应改后缀。</template>
     </p>
 
     <!-- 第三步：进度 / 完成 -->
@@ -466,7 +444,7 @@ onBeforeUnmount(() => offProgress?.())
         <span v-if="task.runSummary.cancelled" class="tag gray">取消 {{ task.runSummary.cancelled }}</span>
         <span class="num muted">耗时 {{ fmtMs(task.runSummary.elapsedMs) }}</span>
         <div class="spacer"></div>
-        <button data-test="open-folder" @click="openFolder">{{ mode === 'folder' ? '打开文件夹' : '打开输出文件夹' }}</button>
+        <button data-test="open-folder" @click="openFolder">打开文件夹</button>
         <button v-if="mode === 'folder'" class="primary" data-test="rescan-done" @click="rescan">重新扫描</button>
         <button v-else class="primary" data-test="pick-more" @click="pickImages">再选一批</button>
       </template>
@@ -482,8 +460,8 @@ onBeforeUnmount(() => offProgress?.())
         </label>
         <span v-else class="small muted">
           {{ task.step === 'done'
-            ? '结果已写入上方输出文件夹'
-            : `${pendingRows.length} 张待压缩 · 结果写入上方输出文件夹` }}
+            ? '压缩结果已写回原图'
+            : `${pendingRows.length} 张待压缩 · 结果原地覆盖原图` }}
         </span>
       </div>
       <div class="table-wrap">
@@ -493,7 +471,7 @@ onBeforeUnmount(() => offProgress?.())
               <th class="col-path">{{ mode === 'folder' ? '文件' : '图片' }}</th>
               <th>尺寸</th>
               <th class="r">原大小</th>
-              <th class="r">{{ mode === 'folder' ? '压缩后' : '输出大小' }}</th>
+              <th class="r">压缩后</th>
               <th class="r">耗时</th>
               <th>状态</th>
             </tr>
@@ -529,7 +507,7 @@ onBeforeUnmount(() => offProgress?.())
     </section>
 
     <footer class="foot">
-      引擎：slimdeer（MIT，WebAssembly，本地运行）· 文件夹模式原地覆盖，图片模式导出副本 · 压缩记录保存在本机，可随时清除
+      引擎：slimdeer（MIT，WebAssembly，本地运行）· 两种模式均原地覆盖原图 · 压缩记录保存在本机，可随时清除
     </footer>
   </div>
 </template>
@@ -575,10 +553,7 @@ onBeforeUnmount(() => offProgress?.())
 .spacer { flex: 1; }
 .note { margin: 0; padding: 10px 16px; background: var(--amber-soft); border-color: #fde68a; color: var(--amber); font-size: 13px; }
 
-.out-row { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line); }
-.out-row label { color: var(--muted); font-size: 13px; flex: none; }
 .action-row { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line); }
-.outpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 
 .runbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
 .progress { flex: 1; height: 10px; border-radius: 5px; background: #edf0f5; overflow: hidden; }

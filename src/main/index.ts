@@ -93,16 +93,6 @@ app.whenReady().then(async () => {
     return r.canceled || r.filePaths.length === 0 ? null : r.filePaths
   })
 
-  ipcMain.handle(IPC.selectOutputDir, async (_e, current: string) => {
-    if (process.env.SLIM_E2E_OUT_DIR) return process.env.SLIM_E2E_OUT_DIR
-    const r = await dialog.showOpenDialog(win!, {
-      title: '选择压缩结果的输出文件夹',
-      properties: ['openDirectory', 'createDirectory'],
-      defaultPath: current || store.getSettings().lastImageDir || undefined
-    })
-    return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0]
-  })
-
   // Dropped paths: a single folder means folder mode, otherwise inspect as image files.
   ipcMain.handle(IPC.openPaths, async (_e, paths: string[]): Promise<OpenPathsResult> => {
     if (runner?.isRunning()) throw new Error('压缩进行中，无法读取文件')
@@ -129,18 +119,6 @@ app.whenReady().then(async () => {
     runner = new CompressRunner(
       { workerPath: workerPath(), vendorDir: vendorDir(), store, emit },
       format
-    )
-    await store.setSettings({ format })
-    return runner.run(paths)
-  })
-
-  ipcMain.handle(IPC.compressFiles, async (_e, paths: string[], format: OutputFormat, outDir: string) => {
-    if (runner?.isRunning()) throw new Error('已有压缩任务在进行')
-    if (!outDir) throw new Error('请先选择输出文件夹')
-    runner = new CompressRunner(
-      { workerPath: workerPath(), vendorDir: vendorDir(), store, emit },
-      format,
-      path.resolve(outDir)
     )
     await store.setSettings({ format })
     return runner.run(paths)
